@@ -1,31 +1,10 @@
-// ******************************* CONFIG **********************************
+// **************************** PLATFORMIO ********************************
 
 // Platformio libs
 #include <stdint.h>
 #include <Arduino.h>
 
-// PIN Configuration
-#define MY_RF24_IRQ_PIN 2
-#define BUZZER_PIN 3
-//#define DHT_DATA_PIN 4
-//#define RGBW_R_PIN 5
-//#define FRONT_PIR_PIN 5
-//#define RGBW_G_PIN 6
-//#define LEFT_PIR_PIN 6
-#define MY_RF24_CE_PIN 7
-#define MY_RF24_CS_PIN 8
-//#define RGBW_B_PIN 9
-//#define RIGHT_PIR_PIN 9
-//#define RGBW_W_PIN 10
-#define MY_DEFAULT_ERR_LED_PIN 14
-#define MY_DEFAULT_TX_LED_PIN 15
-#define MY_DEFAULT_RX_LED_PIN 16
-//#define MY_SIGNING_ATSHA204_PIN 17
-#define BUTTON_PIN 17
-#define NEOPIXEL_LED_PIN 18
-#define MQ2_DIGITAL_PIN 19
-//#define PHOTORES_PIN 20
-#define MQ2_ANALOG_PIN 21
+// ******************************* NODE CONFIGURATION **********************************
 
 // Sampling interval configuration
 static const uint64_t UPDATE_INTERVAL = 60000;
@@ -34,74 +13,17 @@ static const uint8_t FORCE_UPDATE_N_READS = 10;
 // Save states to EEPROM (useful but the total write cycle are limited to about 100000)
 #define SAVE_STATE_TO_EEPROM
 
-// DHT22 configuration
-#ifdef DHT_DATA_PIN
-#define SENSOR_TEMP_OFFSET 0
-#endif
-
-// Buzzer configuration
-#ifdef BUZZER_PIN
-#define BUZZER_FREQ 500
-#endif
-
-// NEOPixel LEDs configuration
-#ifdef NEOPIXEL_LED_PIN
-#define NUMPIXELS 16
-#define STRIP_BRIGHTNESS 255
-#endif
-
-// MQ2 configuration
-#ifdef MQ2_DIGITAL_PIN
-#ifdef BUZZER_PIN
-#define SOUND_ALARM
-#ifdef SOUND_ALARM
-#define BUZZER_ALARM_FREQ 1500
-#define ON_PERIOD 500
-#define OFF_PERIOD 500
-#endif
-#endif
-#ifdef NEOPIXEL_LED_PIN
-#define VISUAL_ALARM
-#ifdef VISUAL_ALARM
-#define LIGHT_ON_PERIOD 1000
-#define LIGHT_OFF_PERIOD 1000
-#define LIGHT_RED_VALUE 255
-#define LIGHT_GREEN_VALUE 0
-#define LIGHT_BLU_VALUE 0
-#define LIGHT_DIMMER_PERCENT 100
-#endif
-#endif
-#endif
-
-// Buttonn configuration
-#ifdef BUTTON_PIN
-bool key_active = false;
-unsigned long key_press_time;
-uint8_t click_count = 0;
-#define SHORT_KEY_PRESS_TIME 250
-#define LONG_KEY_PRESS_TIME 2000
-#define DOUBLE_CLICK_INTERVAL 250
-#ifdef BUZZER_PIN
-#define KEY_PRESS_FREQ 1000
-#endif
-#endif
-
-// MySensors Configuration
-#define MY_REPEATER_FEATURE
-#define MY_SIGNING_SOFT
-#define MY_SIGNING_REQUEST_SIGNATURES
-#ifdef MY_SIGNING_ATSHA204_PIN
-#define MY_SIGNING_ATSHA204
-#endif
-#define MY_RADIO_RF24
-#define MY_RF24_PA_LEVEL RF24_PA_MAX
-// Timeout before starting loop without gateway connection
-#define MY_TRANSPORT_WAIT_READY_MS 10000
-#define MY_SPLASH_SCREEN_DISABLED
-static const bool ack = false;
-
 // Debug configuration
 //#define MY_DEBUG
+
+//  Pin configuration
+#include <PinConfig.cpp>
+
+// Devices configuration
+#include <MainConfig.cpp>
+
+// MySensors configuration
+#include <MySConfig.cpp>
 
 // ************************ END OF CONFIG **********************************
 
@@ -288,6 +210,13 @@ bool last_rgb_lamp_status = false;
 uint8_t last_rgb_lamp_dimmer_percent = 0;
 bool trigger_show_strip = true;
 char rgb_char[7];
+#endif
+
+// BUTTON GLOBAL VARIABLES
+#ifdef BUTTON_PIN
+bool key_active = false;
+unsigned long key_press_time;
+uint8_t click_count = 0;
 #endif
 
 // UPDATE INTERVAL
