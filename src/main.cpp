@@ -21,7 +21,7 @@
 #define MY_DEFAULT_TX_LED_PIN 15
 #define MY_DEFAULT_RX_LED_PIN 16
 //#define MY_SIGNING_ATSHA204_PIN 17
-//#define BUTTON_PIN 17
+#define BUTTON_PIN 17
 #define NEOPIXEL_LED_PIN 18
 #define MQ2_DIGITAL_PIN 19
 //#define PHOTORES_PIN 20
@@ -70,6 +70,19 @@ static const uint8_t FORCE_UPDATE_N_READS = 10;
 #define LIGHT_BLU_VALUE 0
 #define LIGHT_DIMMER_PERCENT 100
 #endif
+#endif
+#endif
+
+// Buttonn configuration
+#ifdef BUTTON_PIN
+bool key_active = false;
+unsigned long key_press_time;
+uint8_t click_count = 0;
+#define SHORT_KEY_PRESS_TIME 250
+#define LONG_KEY_PRESS_TIME 2000
+#define DOUBLE_CLICK_INTERVAL 250
+#ifdef BUZZER_PIN
+#define KEY_PRESS_FREQ 1000
 #endif
 #endif
 
@@ -226,11 +239,13 @@ unsigned long buzzer_last_start = 0;
 #ifdef MQ2_DIGITAL_PIN
 bool mq2_d_alarm = true;
 #ifdef SOUND_ALARM
+bool set_enable_sound_alarm = false;
 bool enable_sound_alarm = false;
 unsigned long sound_start_time = 0;
 bool mq2_trigger_sound_alarm = false;
 #endif
 #ifdef VISUAL_ALARM
+bool set_enable_visual_alarm = false;
 bool enable_visual_alarm = false;
 bool mq2_trigger_visual_alarm = false;
 unsigned long lamp_on_start_time = 0;
@@ -352,7 +367,9 @@ void update_temp_and_hum()
 #endif
   if (isnan(temperature))
   {
+#ifdef MY_DEBUG
     Serial.println("Failed reading temperature from DHT!");
+#endif
   }
   else if (temperature != lastTemp || nNoUpdatesTemp == FORCE_UPDATE_N_READS)
   {
@@ -382,7 +399,9 @@ void update_temp_and_hum()
 #endif
   if (isnan(humidity))
   {
+#ifdef MY_DEBUG
     Serial.println("Failed reading humidity from DHT");
+#endif
   }
   else if (humidity != lastHum || nNoUpdatesHum == FORCE_UPDATE_N_READS)
   {
@@ -518,16 +537,10 @@ void receive(const MyMessage &message)
     // Extract and process STATUS values
     if (message.type == V_STATUS)
     {
-      enable_sound_alarm = (message.getInt() ? true : false);
+      set_enable_sound_alarm = (message.getInt() ? true : false);
 #ifdef MY_DEBUG
       Serial.print("Received enable sound alarm V_STATUS Message: ");
       Serial.println(message.getInt());
-#endif
-      // send feedback
-      send(msgSoundAlarm.set(enable_sound_alarm ? 1 : 0), ack);
-// Save to eeprom position 0
-#ifdef SAVE_STATE_TO_EEPROM
-      saveState(0, enable_sound_alarm ? 1 : 0);
 #endif
     }
   }
@@ -539,16 +552,10 @@ void receive(const MyMessage &message)
     // Extract and process STATUS values
     if (message.type == V_STATUS)
     {
-      enable_visual_alarm = (message.getInt() ? true : false);
+      set_enable_visual_alarm = (message.getInt() ? true : false);
 #ifdef MY_DEBUG
       Serial.print("Received enable visual alarm V_STATUS Message: ");
       Serial.println(message.getInt());
-#endif
-      // send feedback
-      send(msgVisualAlarm.set(enable_visual_alarm ? 1 : 0), ack);
-      // Save to eeprom position 1
-#ifdef SAVE_STATE_TO_EEPROM
-      saveState(1, enable_visual_alarm ? 1 : 0);
 #endif
     }
   }
@@ -749,7 +756,7 @@ void setup()
   uint8_t eeprom_pos0 = loadState(0);
   if (eeprom_pos0 == 0 || eeprom_pos0 == 1)
   {
-    enable_sound_alarm = (eeprom_pos0 ? true : false);
+    set_enable_sound_alarm = (eeprom_pos0 ? true : false);
   }
 #endif
 #ifdef MY_DEBUG
@@ -763,7 +770,7 @@ void setup()
   uint8_t eeprom_pos1 = loadState(1);
   if (eeprom_pos1 == 0 || eeprom_pos1 == 1)
   {
-    enable_visual_alarm = (eeprom_pos1 ? true : false);
+    set_enable_visual_alarm = (eeprom_pos1 ? true : false);
   }
 #endif
 #ifdef MY_DEBUG
@@ -779,6 +786,143 @@ void setup()
 void loop()
 {
   current_time = millis();
+
+#ifdef BUTTON_PIN
+  //  Button pressed
+  if (digitalRead(BUTTON_PIN))
+  {
+    if (!key_active)
+    {
+      key_active = true;
+      key_press_time = current_time;
+    }
+#ifdef CHILD_ID_BUZZER
+    // Beep on key press if buzzer is not busy
+    if (!buzzer_status)
+    {
+      tone(BUZZER_PIN, KEY_PRESS_FREQ);
+    }
+#endif
+  }
+  // Button released
+  else
+  {
+#ifdef CHILD_ID_BUZZER
+    // Stop beep when the button is released
+    if (!buzzer_status)
+    {
+      noTone(BUZZER_PIN);
+    }
+    if (key_active)
+    {
+      // Detect each single key press
+      if (current_time - key_press_time < SHORT_KEY_PRESS_TIME)
+      {
+        click_count++;
+#ifdef MY_DEBUG
+        Serial.print("Number of click: ");
+        Serial.println(click_count);
+#endif
+      }
+      // Detect long key press
+      else if (current_time - key_press_time > LONG_KEY_PRESS_TIME)
+      {
+#ifdef VISUAL_ALARM
+        // Toggle visual alarm on long key press
+        set_enable_visual_alarm = !set_enable_visual_alarm;
+        // First lamp blink with the alarm color and tine
+        strip.clear();
+        for (uint8_t i = 0; i < NUMPIXELS; i++)
+        {
+          strip.setPixelColor(i, LIGHT_RED_VALUE * map(LIGHT_DIMMER_PERCENT, 0, 100, 0, 255) / 255, LIGHT_GREEN_VALUE * map(LIGHT_DIMMER_PERCENT, 0, 100, 0, 255) / 255, LIGHT_BLU_VALUE * map(LIGHT_DIMMER_PERCENT, 0, 100, 0, 255) / 255);
+        }
+        strip.show();
+        wait(LIGHT_ON_PERIOD);
+        strip.clear();
+        strip.show();
+        wait(LIGHT_OFF_PERIOD);
+        // Second lamp blink
+        if (set_enable_visual_alarm)
+        {
+          // green blink if visual alarm is enabled
+          for (uint8_t i = 0; i < NUMPIXELS; i++)
+          {
+            strip.setPixelColor(i, 0, 255 * map(LIGHT_DIMMER_PERCENT, 0, 100, 0, 255) / 255, 0);
+          }
+        }
+        else
+        {
+          // orange blink if visual alarm is enabled
+          for (uint8_t i = 0; i < NUMPIXELS; i++)
+          {
+            strip.setPixelColor(i, 255 * map(LIGHT_DIMMER_PERCENT, 0, 100, 0, 255) / 255, 100 * map(LIGHT_DIMMER_PERCENT, 0, 100, 0, 255) / 255, 0);
+          }
+        }
+        strip.show();
+        wait(LIGHT_ON_PERIOD);
+        strip.clear();
+        strip.show();
+        wait(LIGHT_OFF_PERIOD);
+        trigger_show_strip = true;
+#endif
+      }
+      key_active = false;
+    }
+#endif
+    // Process single click
+    if (click_count == 1 && current_time > key_press_time + SHORT_KEY_PRESS_TIME + DOUBLE_CLICK_INTERVAL)
+    {
+      // Force update sensor reading on short key press
+      last_update_time = 0;
+#ifdef CHILD_ID_BUZZER
+#ifndef CHILD_ID_RGB_LIGHT
+      // Toggle buzzer on short key press, but only if RGB Light is not present
+      buzzer_set_status = !buzzer_set_status;
+#endif
+#endif
+#ifdef CHILD_ID_RGB_LIGHT
+      // Toggle RGB lamp switch on single click
+      set_rgb_lamp_status = !set_rgb_lamp_status;
+#endif
+      click_count = 0;
+    }
+    // Process double click
+    else if (click_count == 2 && current_time > key_press_time + SHORT_KEY_PRESS_TIME + DOUBLE_CLICK_INTERVAL)
+    {
+#ifdef SOUND_ALARM
+      // Toggle sound alarm
+      set_enable_sound_alarm = !set_enable_sound_alarm;
+      // Beep to confirm
+      if (!buzzer_status)
+      {
+        // Double beep when sound alarm is active
+        if (set_enable_sound_alarm)
+        {
+          tone(BUZZER_PIN, BUZZER_ALARM_FREQ);
+          wait(ON_PERIOD);
+          noTone(BUZZER_PIN);
+          wait(OFF_PERIOD);
+          tone(BUZZER_PIN, BUZZER_ALARM_FREQ);
+          wait(ON_PERIOD);
+        }
+        // Single beep when sound alarm is off
+        else
+        {
+          tone(BUZZER_PIN, BUZZER_ALARM_FREQ);
+          wait(ON_PERIOD);
+          noTone(BUZZER_PIN);
+        }
+      }
+#endif
+      click_count = 0;
+    }
+    // Reset click count if > 2
+    else if (click_count >= 3)
+    {
+      click_count = 0;
+    }
+  }
+#endif
 
 // Front PIR
 #ifdef CHILD_ID_FRONT_PIR
@@ -885,9 +1029,23 @@ void loop()
 
 // Acustic GAS alarm
 #ifdef SOUND_ALARM
-  // Send status message for the first run
+  if (set_enable_sound_alarm != enable_sound_alarm)
+  {
+    enable_sound_alarm = set_enable_sound_alarm;
+    // send feedback
+    send(msgSoundAlarm.set(enable_sound_alarm ? 1 : 0), ack);
+    // Save to eeprom position 0
+#ifdef SAVE_STATE_TO_EEPROM
+    saveState(0, enable_sound_alarm ? 1 : 0);
+#endif
+#ifdef MY_DEBUG
+    Serial.print("Enable sound alarm: ");
+    Serial.println(enable_sound_alarm);
+#endif
+  }
   if (is_first_run)
   {
+    // send feedback
     send(msgSoundAlarm.set(enable_sound_alarm ? 1 : 0), ack);
 #ifdef MY_DEBUG
     Serial.print("Enable sound alarm: ");
@@ -913,6 +1071,20 @@ void loop()
 
 // Visual GAS alarm
 #ifdef VISUAL_ALARM
+  if (set_enable_visual_alarm != enable_visual_alarm)
+  {
+    enable_visual_alarm = set_enable_visual_alarm;
+    // send feedback
+    send(msgVisualAlarm.set(enable_visual_alarm ? 1 : 0), ack);
+    // Save to eeprom position 1
+#ifdef SAVE_STATE_TO_EEPROM
+    saveState(1, enable_visual_alarm ? 1 : 0);
+#endif
+#ifdef MY_DEBUG
+    Serial.print("Enable visual alarm: ");
+    Serial.println(enable_visual_alarm);
+#endif
+  }
   // Send status message for the first run
   if (is_first_run)
   {
@@ -955,6 +1127,7 @@ void loop()
       }
       mq2_trigger_visual_alarm = false;
     }
+    // Blink the lamp when the MQ2 alarm is active
     if (!mq2_d_alarm)
     {
       if (lamp_on_start_time == 0 || current_time > lamp_on_start_time + LIGHT_OFF_PERIOD + LIGHT_ON_PERIOD)
@@ -1079,6 +1252,11 @@ void loop()
     update_light_level();
 #endif
 #ifdef DHT_DATA_PIN
+    if (is_first_run)
+    {
+      update_temp_and_hum();
+      wait(5000);
+    }
     update_temp_and_hum();
 #endif
 #ifdef CHILD_ID_MQ2_A
