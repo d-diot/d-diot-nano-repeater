@@ -20,13 +20,13 @@ RX LED = A2
 
 #define BUZZER_PIN 3
 //#define DHT_DATA_PIN 4
-//#define RGBW_R_PIN 5
+//#define RGBW_W_PIN 5
 //#define FRONT_PIR_PIN 5
-//#define RGBW_G_PIN 6
+//#define RGBW_B_PIN 6
 //#define LEFT_PIR_PIN 6
-//#define RGBW_B_PIN 9
+//#define RGBW_G_PIN 9
 //#define RIGHT_PIR_PIN 9
-//#define RGBW_W_PIN 10
+//#define RGBW_R_PIN 10
 //#define MY_SIGNING_ATSHA204_PIN 17
 #define BUTTON_PIN 17
 #define NEOPIXEL_LED_PIN 18

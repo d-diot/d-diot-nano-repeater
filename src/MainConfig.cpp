@@ -42,7 +42,7 @@
 // Button configuration
 #ifdef BUTTON_PIN
 #define SHORT_KEY_PRESS_TIME 250
-#define LONG_KEY_PRESS_TIME 2000
+#define LONG_KEY_PRESS_TIME 1000
 #define DOUBLE_CLICK_INTERVAL 250
 #ifdef BUZZER_PIN
 #define KEY_PRESS_FREQ 1000

@@ -200,7 +200,7 @@ uint8_t nNoUpdatesLightLevel;
 
 // RGB LAMP GLOBAL VARIABLES
 #ifdef NEOPIXEL_LED_PIN
-long set_RGB_values[3] = {255, 255, 255};
+unsigned long set_RGB_values[3] = {255, 255, 255};
 bool set_rgb_lamp_status = false;
 uint8_t set_rgb_lamp_dimmer_percent = 0;
 uint8_t last_R_value = 255;
@@ -217,6 +217,21 @@ char rgb_char[7];
 bool key_active = false;
 unsigned long key_press_time;
 uint8_t click_count = 0;
+#endif
+
+// RGBW LAMP GLOBAL VARIABLES
+#ifdef CHILD_ID_RGBW_LIGHT
+unsigned long set_RGBW_values[4] = {255, 255, 255, 255};
+bool set_rgbw_lamp_status = false;
+uint8_t set_rgbw_lamp_dimmer_percent = 0;
+uint8_t last_R_w_value = 255;
+uint8_t last_G_w_value = 255;
+uint8_t last_B_w_value = 255;
+uint8_t last_W_w_value = 255;
+bool last_rgbw_lamp_status = false;
+uint8_t last_rgbw_lamp_dimmer_percent = 0;
+char rgbw_char[9];
+bool trigger_rgbw_lamp = false;
 #endif
 
 // UPDATE INTERVAL
@@ -426,6 +441,21 @@ void rgb_to_hex_array(uint8_t R = last_R_value, uint8_t G = last_G_value, uint8_
 }
 #endif
 
+// Convert LAMP RGBW values to hex
+#ifdef CHILD_ID_RGBW_LIGHT
+void rgbw_to_hex_array(uint8_t R = last_R_w_value, uint8_t G = last_G_w_value, uint8_t B = last_B_w_value, uint8_t W = last_W_w_value)
+{
+  rgbw_char[0] = nibble_to_hex(R >> 4);
+  rgbw_char[1] = nibble_to_hex(R);
+  rgbw_char[2] = nibble_to_hex(G >> 4);
+  rgbw_char[3] = nibble_to_hex(G);
+  rgbw_char[4] = nibble_to_hex(B >> 4);
+  rgbw_char[5] = nibble_to_hex(B);
+  rgbw_char[6] = nibble_to_hex(W >> 4);
+  rgbw_char[7] = nibble_to_hex(W);
+}
+#endif
+
 // ************************** END OF CUSTOM FUNCTIONS *****************************/
 
 // ************************ MYSESNSORS RECEIVE FUNCTION ***************************/
@@ -506,10 +536,10 @@ void receive(const MyMessage &message)
       // Read hex string
       String rgbHexString = message.getString();
       rgbHexString.toCharArray(rgb_char, sizeof(rgb_char));
-      long rgb_number = (long)strtol(&rgbHexString[0], NULL, 16);
-      set_RGB_values[0] = rgb_number >> 16;
+      unsigned long rgb_number = (unsigned long)strtol(&rgbHexString[0], NULL, 16);
+      set_RGB_values[0] = rgb_number >> 16 & 0xFF;
       set_RGB_values[1] = rgb_number >> 8 & 0xFF;
-      set_RGB_values[2] = rgb_number >> rgb_number & 0xFF;
+      set_RGB_values[2] = rgb_number & 0xFF;
       // Save to EEPROM position 2,3,4 the value of R, G, B
 #ifdef SAVE_STATE_TO_EEPROM
       saveState(2, set_RGB_values[0]);
@@ -545,8 +575,57 @@ void receive(const MyMessage &message)
     }
   }
 #endif
+#ifdef CHILD_ID_RGBW_LIGHT
+  if (message.sensor == CHILD_ID_RGBW_LIGHT)
+  {
+    // Extract and process RGBW values
+    if (message.type == V_RGBW)
+    {
+      // Read hex string
+      String rgbwHexString = message.getString();
+      rgbwHexString.toCharArray(rgbw_char, sizeof(rgbw_char));
+      unsigned long rgbw_number = (unsigned long)strtoul(&rgbwHexString[0], NULL, 16);
+      set_RGBW_values[0] = rgbw_number >> 24 & 0xFF;
+      set_RGBW_values[1] = rgbw_number >> 16 & 0xFF;
+      set_RGBW_values[2] = rgbw_number >> 8 & 0xFF;
+      set_RGBW_values[3] = rgbw_number & 0xFF;
+      // Save to EEPROM position 6,7,8,9 the value of R, G, B, W
+#ifdef SAVE_STATE_TO_EEPROM
+      saveState(6, set_RGBW_values[0]);
+      saveState(7, set_RGBW_values[1]);
+      saveState(8, set_RGBW_values[2]);
+      saveState(9, set_RGBW_values[3]);
+#endif
+#ifdef MY_DEBUG
+      Serial.print("Received RGBW LAMP RGB string message: ");
+      Serial.println(message.getString());
+#endif
+    }
+    // Extract and process RGB LAMP STATUS
+    if (message.type == V_STATUS)
+    {
+      set_rgbw_lamp_status = (message.getInt() ? true : false);
+#ifdef MY_DEBUG
+      Serial.print("Received RGBW LAMP V_STATUS: ");
+      Serial.println(message.getInt());
+#endif
+    }
+    // Extract and process RGB LAMP DIMMER
+    if (message.type == V_PERCENTAGE)
+    {
+      set_rgbw_lamp_dimmer_percent = constrain(message.getInt(), 0, 100);
+      // Save to EEPROM position 5 the value of set dimmer
+#ifdef SAVE_STATE_TO_EEPROM
+      saveState(10, set_rgbw_lamp_dimmer_percent);
+#endif
+#ifdef MY_DEBUG
+      Serial.print("Received RGBW LAMP V_PERCENTAGE: ");
+      Serial.println(message.getInt());
+#endif
+    }
+  }
+#endif
 }
-
 // ********************END OF MYSESNSORS RECEIVE FUNCTION ***************************/
 
 // ******************** MYSESNSORS PRESENTANTION FUNCTION ***************************/
@@ -644,10 +723,12 @@ void setup()
 #ifdef DHT_DATA_PIN
   // DHT22 setup
   dht.setup(DHT_DATA_PIN);
+#ifdef MY_DEBUG
   if (UPDATE_INTERVAL <= dht.getMinimumSamplingPeriod())
   {
     Serial.println("Warning: UPDATE_INTERVAL is smaller than supported by the sensor!");
   }
+#endif
 #endif
 
 #ifdef CHILD_ID_RGB_LIGHT
@@ -676,6 +757,34 @@ void setup()
   Serial.println(set_RGB_values[2]);
   Serial.print("EEPROM pos 5 =");
   Serial.println(set_rgb_lamp_dimmer_percent);
+#endif
+#endif
+
+#ifdef CHILD_ID_RGBW_LIGHT
+  // Fix the PWM timer. Without this the LEDs will flicker.
+  TCCR0A = _BV(COM0A1) | _BV(COM0B1) | _BV(WGM00);
+#ifdef SAVE_STATE_TO_EEPROM
+  set_RGBW_values[0] = loadState(6);
+  set_RGBW_values[1] = loadState(7);
+  set_RGBW_values[2] = loadState(8);
+  set_RGBW_values[2] = loadState(9);
+  uint8_t eeprom_pos10 = loadState(10);
+  if (eeprom_pos10 >= 0 && eeprom_pos10 <= 100)
+  {
+    set_rgbw_lamp_dimmer_percent = (set_rgbw_lamp_status ? eeprom_pos10 : 0);
+  }
+#endif
+#ifdef MY_DEBUG
+  Serial.print("EEPROM pos 6 =");
+  Serial.println(set_RGBW_values[0]);
+  Serial.print("EEPROM pos 7 =");
+  Serial.println(set_RGBW_values[1]);
+  Serial.print("EEPROM pos 8 =");
+  Serial.println(set_RGBW_values[2]);
+  Serial.print("EEPROM pos 9 =");
+  Serial.println(set_RGBW_values[3]);
+  Serial.print("EEPROM pos 10 =");
+  Serial.println(set_rgbw_lamp_dimmer_percent);
 #endif
 #endif
 
@@ -812,6 +921,12 @@ void loop()
 #ifdef CHILD_ID_RGB_LIGHT
       // Toggle RGB lamp switch on single click
       set_rgb_lamp_status = !set_rgb_lamp_status;
+#endif
+#ifdef CHILD_ID_RGBW_LIGHT
+      // Toggle RGBW lamp switch on single click but only if RGB Light is not present
+#ifndef CHILD_ID_RGB_LIGHT
+      set_rgbw_lamp_status = !set_rgbw_lamp_status;
+#endif
 #endif
       click_count = 0;
     }
@@ -1170,6 +1285,77 @@ void loop()
     Serial.println(String(rgb_char));
     Serial.print("RGB Lamp dimmer percent: ");
     Serial.println(last_rgb_lamp_dimmer_percent);
+#endif
+  }
+#endif
+
+// RGBW LAMP
+#ifdef CHILD_ID_RGBW_LIGHT
+  if (set_rgbw_lamp_status != last_rgbw_lamp_status)
+  {
+    last_rgbw_lamp_status = set_rgbw_lamp_status;
+    trigger_rgbw_lamp = true;
+  }
+  if (last_R_w_value != set_RGBW_values[0] || last_G_w_value != set_RGBW_values[1] || last_B_w_value != set_RGBW_values[2] || last_W_w_value != set_RGBW_values[3])
+  {
+    last_R_w_value = set_RGBW_values[0];
+    last_G_w_value = set_RGBW_values[1];
+    last_B_w_value = set_RGBW_values[2];
+    last_W_w_value = set_RGBW_values[3];
+    trigger_rgbw_lamp = true;
+  }
+  if (set_rgbw_lamp_dimmer_percent != last_rgbw_lamp_dimmer_percent)
+  {
+    last_rgbw_lamp_dimmer_percent = set_rgbw_lamp_dimmer_percent;
+    // Turn lamp OFF if dimmer is 0
+    if (last_rgbw_lamp_dimmer_percent == 0)
+    {
+      set_rgbw_lamp_status = false;
+      last_rgbw_lamp_status = false;
+    }
+    // turn lamp on if dimmer is not 0
+    else
+    {
+      last_rgbw_lamp_status = true;
+      set_rgbw_lamp_status = true;
+    }
+    trigger_rgbw_lamp = true;
+  }
+  // Force dimmer to 100 if the lamp is set to on and dimmer % is 0
+  if (last_rgbw_lamp_dimmer_percent == 0 && last_rgbw_lamp_status)
+  {
+    last_rgbw_lamp_dimmer_percent = 100;
+    set_rgbw_lamp_dimmer_percent = 100;
+    trigger_rgbw_lamp = true;
+  }
+  if (trigger_rgbw_lamp || is_first_run)
+  {
+    if (last_rgbw_lamp_status)
+    {
+      analogWrite(RGBW_R_PIN, last_R_w_value * map(last_rgbw_lamp_dimmer_percent, 0, 100, 0, 255) / 255);
+      analogWrite(RGBW_G_PIN, last_G_w_value * map(last_rgbw_lamp_dimmer_percent, 0, 100, 0, 255) / 255);
+      analogWrite(RGBW_B_PIN, last_B_w_value * map(last_rgbw_lamp_dimmer_percent, 0, 100, 0, 255) / 255);
+      analogWrite(RGBW_W_PIN, last_W_w_value);
+    }
+    else
+    {
+      analogWrite(RGBW_R_PIN, 0);
+      analogWrite(RGBW_G_PIN, 0);
+      analogWrite(RGBW_B_PIN, 0);
+      analogWrite(RGBW_W_PIN, 0);
+    }
+    rgbw_to_hex_array();
+    send(msgRGBW_Status.set(last_rgbw_lamp_status ? 1 : 0), ack);
+    send(msgRGBW_Color.set(rgbw_char), ack);
+    send(msgRGBW_Dimmer.set(last_rgbw_lamp_dimmer_percent), ack);
+    trigger_rgbw_lamp = false;
+#ifdef MY_DEBUG
+    Serial.print("RGBW Lamp staus: ");
+    Serial.println(last_rgbw_lamp_status);
+    Serial.print("RGBW Lamp RGBW: ");
+    Serial.println(String(rgbw_char));
+    Serial.print("RGBW Lamp dimmer percent: ");
+    Serial.println(last_rgbw_lamp_dimmer_percent);
 #endif
   }
 #endif
